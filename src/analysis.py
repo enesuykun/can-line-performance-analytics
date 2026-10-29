@@ -16,7 +16,7 @@ OUT = ROOT / "outputs"
 CHARTS = OUT / "charts"
 
 OEE_TARGET = 0.80
-DOME_LSL = 90.0  # psi
+DOME_LSL = 90.0  # alt spek limiti (psi)
 SPC_BASELINE_DAYS = 60
 
 C_LINE1, C_LINE2 = "#1f4e79", "#e07b39"
@@ -132,7 +132,7 @@ def chart_changeover(events):
     return co
 
 
-A2, D3, D4, d2 = 0.577, 0.0, 2.114, 2.326  # n = 5
+A2, D3, D4, d2 = 0.577, 0.0, 2.114, 2.326  # alt grup büyüklüğü n = 5 için katsayılar
 
 
 def spc_analysis(quality, line):
@@ -148,7 +148,7 @@ def spc_analysis(quality, line):
     sigma = rbar / d2
 
     sg["rule1"] = (sg["xbar"] > ucl) | (sg["xbar"] < lcl)
-    # 8 in a row on one side
+    # merkez çizginin aynı tarafında art arda 8 nokta
     side = np.sign(sg["xbar"] - xbarbar)
     run = side.groupby((side != side.shift()).cumsum()).cumcount() + 1
     sg["rule_run8"] = run >= 8

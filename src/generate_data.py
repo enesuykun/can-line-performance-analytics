@@ -6,12 +6,12 @@ import pandas as pd
 SEED = 42
 START_DATE = "2026-07-01"
 N_DAYS = 90
-LINES = {"Line 1": 2400, "Line 2": 2200}  # cans/min
+LINES = {"Line 1": 2400, "Line 2": 2200}  # ideal hız (kutu/dk)
 SHIFTS = ["A", "B", "C"]
 CREWS = ["Crew A", "Crew B", "Crew C", "Crew D"]
 PLANNED_MIN = 480
 
-# reason: (events per shift, avg minutes, category)
+# duruş nedeni: (vardiya başına olay sayısı, ort. süre dk, kategori)
 DOWNTIME_REASONS = {
     "Bodymaker jam":          (1.2, 9,  "Mechanical"),
     "Decorator / printer":    (0.8, 14, "Mechanical"),
@@ -86,7 +86,7 @@ def main():
                     "good_cans": total_cans - scrap_cans,
                 })
 
-                # dome reversal pressure, 5 cans per shift
+                # dome reversal basıncı, vardiya başına 5 kutu
                 mean_psi = 93.0
                 if line == "Line 2" and d_idx >= N_DAYS - 21:
                     mean_psi -= 0.12 * (d_idx - (N_DAYS - 21))
