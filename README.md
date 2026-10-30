@@ -1,5 +1,7 @@
 # Can Line Performance Analytics
 
+[![CI](https://github.com/enesuykun/can-line-performance-analytics/actions/workflows/ci.yml/badge.svg)](https://github.com/enesuykun/can-line-performance-analytics/actions/workflows/ci.yml)
+
 Alüminyum içecek kutusu üreten bir fabrika için uçtan uca operasyon analitiği: **OEE**, **duruş Pareto analizi**, **ekip karşılaştırması**, **Western Electric kurallarıyla SPC (X-bar/R)**, **proses yeterliliği (Cpk)** ve Excel'de otomatik hazırlanan **günlük operasyon toplantısı raporu**.
 
 > Tüm veriler sentetiktir ve `src/generate_data.py` ile üretilir. Analizin her problemi nasıl tespit ettiğini gösterebilmek için veriye bilinçli olarak problemler yerleştirilmiştir.
@@ -36,6 +38,19 @@ Otomatik üretilen detaylı bulgular: [`outputs/insights.md`](outputs/insights.m
 ### SPC - Hat 2 dome reversal basıncı
 ![SPC](outputs/charts/05_spc_line2.png)
 
+## İnteraktif dashboard
+
+`streamlit run app.py` ile açılan dashboard'da tarih, hat, ekip ve vardiya filtreleriyle şunlar incelenebilir:
+
+- Hat bazında OEE ve kırılımları (kullanılabilirlik / performans / kalite), hedefe göre fark
+- Haftalık veya günlük OEE trendi
+- Duruş Pareto analizi; kaybın ~%80'ini oluşturan nedenler vurgulanır
+- Hat x ekip OEE ısı haritası ve dekoratör duruşları için Mann-Whitney U testi
+- X-bar/R kontrol kartı, Cpk ve SPC'nin kaç gün önceden uyarı verdiği
+- Filtrelenmiş vardiya verisinin CSV olarak indirilmesi
+
+![Dashboard - SPC sekmesi](docs/dashboard_spc.png)
+
 ## Günlük operasyon toplantısı raporu
 
 `outputs/daily_ops_report.xlsx` her çalıştırmada yeniden oluşturulur ve şunları içerir:
@@ -63,6 +78,9 @@ can-line-performance-analytics/
 ├── src/
 │   ├── generate_data.py         # üretim, duruş ve kalite verisini üretir
 │   └── analysis.py              # OEE, Pareto, testler, SPC, Excel raporu, bulgular
+├── app.py                       # Streamlit dashboard
+├── tests/                       # OEE, SPC kuralları ve uçtan uca bulgu testleri
+├── .github/workflows/ci.yml     # her push'ta testler ve tekrar üretilebilirlik kontrolü
 ├── outputs/
 │   ├── charts/                  # PNG grafikler
 │   ├── daily_ops_report.xlsx    # günlük toplantı raporu
@@ -76,7 +94,20 @@ can-line-performance-analytics/
 pip install -r requirements.txt
 python src/generate_data.py
 python src/analysis.py
+
+streamlit run app.py   # dashboard
 ```
+
+## Testler
+
+```bash
+pip install pytest
+pytest
+```
+
+- **Birim testleri:** OEE'nin oranların ortalamasından değil toplam miktarlardan hesaplandığı, kontrol limitleri, Kural 1, 8 noktalı seri kuralı ve Cpk elle hesaplanmış küçük veri setleriyle doğrulanır.
+- **Uçtan uca testler:** README'deki bulgular (Hat 2'nin hedef altında olması, Crew C etkisi, SPC'nin spek dışından önce uyarması) depodaki veriden yeniden üretilir; Excel raporunun sayfaları kontrol edilir.
+- **CI:** GitHub Actions, Python 3.11 ve 3.13'te veri üretiminin deterministik olduğunu, testleri ve `insights.md`'nin güncel olduğunu kontrol eder.
 
 ## Araçlar
 
