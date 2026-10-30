@@ -2,3 +2,6 @@ __pycache__/
 *.pyc
 .venv/
 .pytest_cache/
+data/*.sqlite
+data/erp/
+data/validation_report.csv

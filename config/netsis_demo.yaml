@@ -1,0 +1,73 @@
+# Netsis tarzı örnek ERP (üretim teyitleri) + MES (duruşlar) + laboratuvar (kalite).
+# Örnek veritabanı: python src/build_demo_erp.py
+# Tablo/alan adları kurgusaldır; gerçek kurulumda IT'nin açtığı salt okunur view'lar kullanılır.
+#
+# Gerçek Netsis (MS SQL Server) bağlantısı örneği:
+#   url: mssql+pyodbc://${NETSIS_USER}:${NETSIS_PASSWORD}@${NETSIS_HOST}/${NETSIS_DB}?driver=ODBC+Driver+18+for+SQL+Server
+# Şifreler config'e yazılmaz, ${...} ile ortam değişkeninden okunur.
+
+connections:
+  netsis:
+    type: sql
+    url: sqlite:///data/demo_erp.sqlite
+  mes:
+    type: sql
+    url: sqlite:///data/demo_erp.sqlite
+
+codes:
+  line: &line {H01: Line 1, H02: Line 2}
+  shift: &shift {1: A, 2: B, 3: C}
+  crew: &crew {E1: Crew A, E2: Crew B, E3: Crew C, E4: Crew D}
+
+tables:
+  production_shifts:
+    connection: netsis
+    # teyitler iş emri bazında; vardiyaya toplama veritabanında yapılır
+    query: |
+      SELECT t.TEYIT_TARIHI          AS date,
+             t.VARDIYA               AS shift,
+             t.EKIP_KODU             AS crew,
+             t.HAT_KODU              AS line,
+             SUM(t.PLANLANAN_SURE_DK) AS planned_min,
+             SUM(t.CALISMA_SURE_DK)   AS run_min,
+             MAX(h.IDEAL_HIZ_DK)      AS ideal_cpm,
+             SUM(t.URETIM_BIN_ADET)   AS total_cans,
+             SUM(t.FIRE_BIN_ADET)     AS scrap_cans
+      FROM URETIM_TEYIT t
+      JOIN HAT_TANIM h ON h.HAT_KODU = t.HAT_KODU
+      GROUP BY t.TEYIT_TARIHI, t.VARDIYA, t.EKIP_KODU, t.HAT_KODU
+    value_maps: {line: *line, shift: *shift, crew: *crew}
+    scale: {total_cans: 1000, scrap_cans: 1000}     # bin adet -> adet
+    derive:
+      good_cans: total_cans - scrap_cans
+      downtime_min: planned_min - run_min
+
+  downtime_events:
+    connection: mes
+    query: |
+      SELECT d.KAYIT_NO       AS event_id,
+             d.VARDIYA_TARIHI AS date,
+             d.VARDIYA        AS shift,
+             d.EKIP_KODU      AS crew,
+             d.HAT_KODU       AS line,
+             n.ACIKLAMA       AS reason,
+             n.KATEGORI       AS category,
+             d.SURE_SN        AS minutes
+      FROM MES_DURUS d
+      LEFT JOIN DURUS_NEDEN n ON n.NEDEN_KODU = d.NEDEN_KODU
+    value_maps: {line: *line, shift: *shift, crew: *crew}
+    scale: {minutes: 1/60}                           # saniye -> dakika
+
+  quality_samples:
+    connection: netsis
+    query: |
+      SELECT OLCUM_TARIHI AS date,
+             VARDIYA      AS shift,
+             HAT_KODU     AS line,
+             NUMUNE_SIRA  AS can_no,
+             DEGER        AS dome_reversal_psi
+      FROM KALITE_OLCUM
+      WHERE KARAKTERISTIK = 'DOME_REV_PSI'
+    value_maps: {line: *line, shift: *shift}
+    derive:
+      subgroup: "{date}-{shift}"

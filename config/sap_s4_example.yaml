@@ -1,0 +1,68 @@
+# SAP S/4HANA örneği: üretim teyitleri OData'dan, duruşlar MES'ten, kalite LIMS export'undan.
+#
+# ÖNEMLİ: Servis, entity ve alan adları ÖRNEKTİR. Kurulumdan önce sistemdeki
+#   https://<host>/sap/opu/odata/sap/<SERVIS>/$metadata
+# çıktısıyla ve api.sap.com'daki API dokümantasyonuyla doğrulanmalıdır. Çoğu şirkette
+# vardiya / ekip bilgisi standart teyit alanlarında değil, özel (Z) alanlarda veya
+# vardiya takviminde tutulur.
+#
+# Gerekli ortam değişkenleri: SAP_HOST, SAP_USER, SAP_PASSWORD, MES_DB_URL
+# Kullanıcı yalnızca okuma yetkili bir teknik kullanıcı olmalıdır.
+
+connections:
+  sap:
+    type: odata
+    base_url: https://${SAP_HOST}/sap/opu/odata/sap/API_PROD_ORDER_CONFIRMATION_2_SRV
+    user: ${SAP_USER}
+    password: ${SAP_PASSWORD}
+    timeout: 120
+  mes:
+    type: sql
+    url: ${MES_DB_URL}
+  lims:
+    type: file
+    path: data/lims_export.xlsx
+
+tables:
+  production_shifts:
+    connection: sap
+    entity: ProdnOrdConf2
+    params:
+      $select: PostingDate,WorkCenter,ShiftDefinition,ShiftGroup,ConfirmationYieldQuantity,ConfirmationScrapQuantity,OpConfirmedWorkQuantity1
+      $filter: Plant eq '1000' and PostingDate ge datetime'2026-07-01T00:00:00'
+    rename:
+      PostingDate: date
+      WorkCenter: line
+      ShiftDefinition: shift
+      ShiftGroup: crew
+      ConfirmationYieldQuantity: good_cans      # SAP'de "yield" = sağlam adet
+      ConfirmationScrapQuantity: scrap_cans
+      OpConfirmedWorkQuantity1: run_min         # makine süresi (aktivite 1, dakika)
+    value_maps:
+      line: {CANL01: Line 1, CANL02: Line 2}
+      shift: {"1": A, "2": B, "3": C}
+      crew: {G1: Crew A, G2: Crew B, G3: Crew C, G4: Crew D}
+    lookup:                                     # ideal hız: iş yeri ana verisi / rota standart değeri
+      ideal_cpm: {key: line, values: {Line 1: 2400, Line 2: 2200}}
+    # OData gruplama yapamaz: iş emri teyitleri vardiyaya burada toplanır
+    aggregate:
+      by: [date, shift, crew, line]
+      sum: [good_cans, scrap_cans, run_min]
+      first: [ideal_cpm]
+    derive:
+      planned_min: "480"                        # vardiya takviminden de okunabilir
+      total_cans: good_cans + scrap_cans
+      downtime_min: planned_min - run_min
+
+  downtime_events:
+    connection: mes
+    query: |
+      SELECT event_id, shift_date AS date, shift, crew, line, reason, category, duration_min AS minutes
+      FROM v_downtime_events
+      WHERE shift_date >= '2026-07-01'
+
+  quality_samples:
+    connection: lims
+    rename: {Tarih: date, Vardiya: shift, Hat: line, Numune: can_no, Deger: dome_reversal_psi}
+    derive:
+      subgroup: "{date}-{shift}"

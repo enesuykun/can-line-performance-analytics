@@ -27,6 +27,11 @@ jobs:
       - name: Testler
         run: pytest -v
 
+      - name: ERP entegrasyon demosu
+        run: |
+          python src/build_demo_erp.py
+          python src/ingest.py --config config/netsis_demo.yaml --out data/erp
+
       - name: Analiz ve bulgular güncel mi
         run: |
           python src/analysis.py > /dev/null

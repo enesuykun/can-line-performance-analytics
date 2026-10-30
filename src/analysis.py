@@ -1,3 +1,4 @@
+import argparse
 from pathlib import Path
 
 import matplotlib
@@ -28,10 +29,11 @@ plt.rcParams.update({
 })
 
 
-def load():
-    shifts = pd.read_csv(DATA / "production_shifts.csv", parse_dates=["date"])
-    events = pd.read_csv(DATA / "downtime_events.csv", parse_dates=["date"])
-    quality = pd.read_csv(DATA / "quality_samples.csv", parse_dates=["date"])
+def load(data_dir=DATA):
+    data_dir = Path(data_dir)
+    shifts = pd.read_csv(data_dir / "production_shifts.csv", parse_dates=["date"])
+    events = pd.read_csv(data_dir / "downtime_events.csv", parse_dates=["date"])
+    quality = pd.read_csv(data_dir / "quality_samples.csv", parse_dates=["date"])
     return shifts, events, quality
 
 
@@ -373,8 +375,11 @@ def write_insights(shifts, wk, paretos, crew, co, spc, dec_test, day, kpi):
 
 
 def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--data", default=str(DATA), help="ortak şemadaki CSV'lerin klasörü (bkz. src/ingest.py)")
+    args = ap.parse_args()
     CHARTS.mkdir(parents=True, exist_ok=True)
-    shifts, events, quality = load()
+    shifts, events, quality = load(args.data)
     shifts = add_oee(shifts)
 
     wk = chart_weekly_oee(shifts)

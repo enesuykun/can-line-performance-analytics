@@ -51,6 +51,46 @@ Otomatik üretilen detaylı bulgular: [`outputs/insights.md`](outputs/insights.m
 
 ![Dashboard - SPC sekmesi](docs/dashboard_spc.png)
 
+## ERP / MES entegrasyonu (SAP, Netsis)
+
+Analiz kodu kaynaktan bağımsızdır; yalnızca üç tablodan oluşan **ortak şemayı** bilir (`production_shifts`, `downtime_events`, `quality_samples`). ERP ve MES'ten gelen veri bir YAML config ile bu şemaya çevrilir, doğrulanır ve sonra analize girer:
+
+```
+SAP (OData) / Netsis (SQL) / MES (SQL) / LIMS (Excel)
+        │  src/sources.py   config/*.yaml: bağlantı, sorgu, alan ve kod eşleme, birim çevirme, vardiyaya toplama
+        ▼
+  ortak şema ──► src/validate.py  (mükerrer teyit, negatif süre, eksik vardiya, ERP-MES tutarsızlığı ...)
+        │
+        ▼
+  analysis.py · dashboard · günlük Excel raporu
+```
+
+| Ortak alan | Tipik kaynak | Not |
+|---|---|---|
+| Vardiya üretimi (süre, adet, fire) | ERP üretim teyitleri: SAP PP, Netsis Üretim | Teyitler iş emri bazındadır, vardiyaya toplanır |
+| İdeal hız | ERP ana verisi (iş yeri / rota standart değeri) | |
+| Duruş olayları | MES / SCADA, bazen operatör Excel'i | ERP'de genelde dakika bazında duruş tutulmaz |
+| Kalite ölçümleri | SAP QM veya laboratuvar sistemi (LIMS) | |
+
+**Demo (Netsis tarzı örnek veritabanı):**
+
+```bash
+python src/build_demo_erp.py                     # iş emri bazında, bin adet, saniye, kodlu örnek ERP + MES
+python src/ingest.py --config config/netsis_demo.yaml --out data/erp
+python src/analysis.py --data data/erp
+
+python src/build_demo_erp.py --dirty             # tipik ERP hatalarını ekle
+python src/ingest.py --config config/netsis_demo.yaml --out data/erp   # doğrulama raporu, hata varsa veri yazılmaz
+```
+
+Örnek veritabanındaki tablo ve alan adları **kurgusaldır**; gerçek bir Netsis kurulumunun tablolarını temsil etmez. Gerçek kurulumda IT'nin açtığı salt okunur view'lar kullanılır ve sadece config değişir.
+
+**Config'ler:**
+- [`config/netsis_demo.yaml`](config/netsis_demo.yaml): SQL ile okuma; vardiyaya toplama veritabanında (`GROUP BY`), kod eşleme ve birim çevirme config'te. MS SQL Server bağlantı örneği dosyada.
+- [`config/sap_s4_example.yaml`](config/sap_s4_example.yaml): SAP S/4HANA üretim teyitleri OData'dan (sayfalı okuma, `/Date()/` çevrimi), duruşlar MES'ten, kalite LIMS Excel'inden. Servis ve alan adları örnektir; sistemdeki `$metadata` ile doğrulanmalıdır. Testlerde sahte bir OData cevabıyla sınanır.
+
+**Kurumsal ortamda dikkat edilecekler:** salt okunur teknik kullanıcı; şifreler config'te değil ortam değişkeninde (`${SAP_PASSWORD}`); SAP veritabanına doğrudan bağlanmak yerine OData veya veri ambarı (lisans ve güvenlik); eşlemesi olmayan bir kod (ör. yeni bir hat) sessizce atlanmaz, hata verir; operatör bazında analiz KVKK kapsamındadır.
+
 ## Günlük operasyon toplantısı raporu
 
 `outputs/daily_ops_report.xlsx` her çalıştırmada yeniden oluşturulur ve şunları içerir:
@@ -75,9 +115,14 @@ Otomatik üretilen detaylı bulgular: [`outputs/insights.md`](outputs/insights.m
 ```
 can-line-performance-analytics/
 ├── data/                        # sentetik CSV dosyaları (üretilmiş)
+├── config/                      # ERP/MES bağlantı ve alan eşleme dosyaları (Netsis demo, SAP örneği)
 ├── src/
 │   ├── generate_data.py         # üretim, duruş ve kalite verisini üretir
-│   └── analysis.py              # OEE, Pareto, testler, SPC, Excel raporu, bulgular
+│   ├── analysis.py              # OEE, Pareto, testler, SPC, Excel raporu, bulgular
+│   ├── sources.py               # SQL / SAP OData / Excel kaynaklarından ortak şemaya okuma
+│   ├── validate.py              # içe alınan veri için kalite kontrolleri
+│   ├── ingest.py                # çek -> doğrula -> CSV yaz (komut satırı)
+│   └── build_demo_erp.py        # Netsis tarzı örnek ERP + MES veritabanı
 ├── app.py                       # Streamlit dashboard
 ├── tests/                       # OEE, SPC kuralları ve uçtan uca bulgu testleri
 ├── .github/workflows/ci.yml     # her push'ta testler ve tekrar üretilebilirlik kontrolü
@@ -107,7 +152,8 @@ pytest
 
 - **Birim testleri:** OEE'nin oranların ortalamasından değil toplam miktarlardan hesaplandığı, kontrol limitleri, Kural 1, 8 noktalı seri kuralı ve Cpk elle hesaplanmış küçük veri setleriyle doğrulanır.
 - **Uçtan uca testler:** README'deki bulgular (Hat 2'nin hedef altında olması, Crew C etkisi, SPC'nin spek dışından önce uyarması) depodaki veriden yeniden üretilir; Excel raporunun sayfaları kontrol edilir.
-- **CI:** GitHub Actions, Python 3.11 ve 3.13'te veri üretiminin deterministik olduğunu, testleri ve `insights.md`'nin güncel olduğunu kontrol eder.
+- **Entegrasyon testleri:** örnek ERP'den okunan verinin orijinal veriyle birebir aynı olduğu, kirli veride hataların yakalandığı ve hatalı verinin yazılmadığı, SAP OData sayfalama ve vardiyaya toplama doğrulanır.
+- **CI:** GitHub Actions, Python 3.11 ve 3.13'te veri üretiminin deterministik olduğunu, testleri, ERP entegrasyon demosunu ve `insights.md`'nin güncel olduğunu kontrol eder.
 
 ## Araçlar
 
