@@ -135,7 +135,8 @@ def chart_changeover(events):
 A2, D3, D4, d2 = 0.577, 0.0, 2.114, 2.326  # alt grup büyüklüğü n = 5 için katsayılar
 
 
-def spc_analysis(quality, line):
+def spc_table(quality, line):
+    """X-bar/R alt grupları, baz dönemden kontrol limitleri, sinyaller ve Cpk."""
     q = quality[quality["line"] == line]
     sg = (q.groupby(["subgroup", "date"])["dome_reversal_psi"]
           .agg(xbar="mean", r=lambda s: s.max() - s.min()).reset_index()
@@ -158,6 +159,23 @@ def spc_analysis(quality, line):
     cpk_base = (base["xbar"].mean() - DOME_LSL) / (3 * sigma)
     cpk_recent = (recent.mean() - DOME_LSL) / (3 * recent.std(ddof=1))
 
+    after_base = sg["date"] >= start + pd.Timedelta(days=SPC_BASELINE_DAYS)
+    first_alert = sg.loc[sg["alert"] & after_base & (sg["xbar"] < xbarbar), "date"]
+    return {
+        "line": line, "ucl": ucl, "cl": xbarbar, "lcl": lcl, "rbar": rbar,
+        "n_base": len(base), "cpk_base": cpk_base, "cpk_recent": cpk_recent,
+        "alerts": int(sg["alert"].sum()),
+        "first_alert": first_alert.min() if len(first_alert) else None,
+        "first_out_of_spec": q.loc[q["dome_reversal_psi"] < DOME_LSL, "date"].min(),
+        "table": sg,
+    }
+
+
+def spc_analysis(quality, line):
+    r = spc_table(quality, line)
+    sg, ucl, xbarbar, lcl, rbar = r["table"], r["ucl"], r["cl"], r["lcl"], r["rbar"]
+    cpk_base, cpk_recent = r["cpk_base"], r["cpk_recent"]
+
     fig, (a1, a2) = plt.subplots(2, 1, figsize=(11, 5.5), sharex=True,
                                  gridspec_kw={"height_ratios": [2, 1]})
     x = np.arange(len(sg))
@@ -169,7 +187,7 @@ def spc_analysis(quality, line):
         a1.text(len(sg) + 2, y, f"{lab} {y:.2f}", va="center", fontsize=8)
     a1.axhline(DOME_LSL, color=C_ALERT, lw=1.2, ls=":")
     a1.text(len(sg) + 2, DOME_LSL, f"LSL {DOME_LSL:.0f}", va="center", fontsize=8, color=C_ALERT)
-    a1.axvline(len(base) - 0.5, color=C_GREY, lw=0.8)
+    a1.axvline(r["n_base"] - 0.5, color=C_GREY, lw=0.8)
     a1.set_ylabel("X-bar (psi)")
     a1.set_title(f"{line} - dome reversal pressure X-bar / R chart  "
                  f"(Cpk baseline {cpk_base:.2f} -> last 3 weeks {cpk_recent:.2f})",
@@ -183,17 +201,7 @@ def spc_analysis(quality, line):
     fig.tight_layout()
     fig.savefig(CHARTS / f"05_spc_{line.replace(' ', '').lower()}.png")
     plt.close(fig)
-
-    after_base = sg["date"] >= start + pd.Timedelta(days=SPC_BASELINE_DAYS)
-    first_alert = sg.loc[sg["alert"] & after_base & (sg["xbar"] < xbarbar), "date"]
-    return {
-        "line": line, "ucl": ucl, "cl": xbarbar, "lcl": lcl,
-        "cpk_base": cpk_base, "cpk_recent": cpk_recent,
-        "alerts": int(sg["alert"].sum()),
-        "first_alert": first_alert.min() if len(first_alert) else None,
-        "first_out_of_spec": q.loc[q["dome_reversal_psi"] < DOME_LSL, "date"].min(),
-        "table": sg,
-    }
+    return r
 
 
 def decorator_crew_test(shifts, events):
@@ -272,10 +280,10 @@ def daily_report(shifts, events, spc_results, path):
     ])
 
     with pd.ExcelWriter(path, engine="openpyxl") as xw:
-        kpi.to_excel(xw, "Daily KPI", index=False)
-        losses.to_excel(xw, "Top Losses", index=False)
-        spc_df.to_excel(xw, "SPC Status", index=False)
-        actions.to_excel(xw, "Action Log (PDCA)", index=False)
+        kpi.to_excel(xw, sheet_name="Daily KPI", index=False)
+        losses.to_excel(xw, sheet_name="Top Losses", index=False)
+        spc_df.to_excel(xw, sheet_name="SPC Status", index=False)
+        actions.to_excel(xw, sheet_name="Action Log (PDCA)", index=False)
 
         ws = xw.sheets["Daily KPI"]
         style_sheet(ws, pct_cols=(4, 5, 6, 7, 8))
