@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - run: pip install -r requirements.txt pytest
+
+      - name: Veri üretimi deterministik mi
+        run: |
+          python src/generate_data.py
+          git diff --exit-code data/
+
+      - name: Testler
+        run: pytest -v
+
+      - name: Analiz ve bulgular güncel mi
+        run: |
+          python src/analysis.py > /dev/null
+          git diff --exit-code outputs/insights.md
